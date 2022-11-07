@@ -119,25 +119,29 @@ def mp_iter(s):
 
 
 # +
-rmd_clip_f = np.ones_like(data, dtype=bool)
-d_shared, rmd_clip_f = create_mp_array(rmd_clip_f)
-dtype = rmd_clip_f.dtype
-shape = rmd_clip_f.shape
 
-m_pool = multiprocessing.Pool(multiprocessing.cpu_count(), initializer=mp_init, \
-                              initargs=(d_shared, dtype, shape))
-_ = m_pool.map(mp_iter, np.ndindex(data.shape[1:]))
-m_pool.close()
-m_pool.join()
+def runmult(cpus = multiprocessing.cpu_count()):
+    global dtype, shape
+    rmd_clip_f = np.ones_like(data, dtype=bool)
+    d_shared, rmd_clip_f = create_mp_array(rmd_clip_f)
+    dtype = rmd_clip_f.dtype
+    shape = rmd_clip_f.shape
 
-rmd_clip_f = rmd_clip_f ^ flags
+    m_pool = multiprocessing.Pool(cpus,
+                                  initializer=mp_init, \
+                                  initargs=(d_shared, dtype, shape))
+    _ = m_pool.map(mp_iter, np.ndindex(data.shape[1:]))
+    m_pool.close()
+    m_pool.join()
 
-# apply min_N condition
-mad_f_min_n = np.logical_not(flags).sum(axis=0) < min_N
-mad_f_min_n = np.expand_dims(mad_f_min_n, axis=0)
-mad_f_min_n = np.repeat(mad_f_min_n, flags.shape[0], axis=0)
-rmd_clip_f[mad_f_min_n] = False
+    rmd_clip_f = rmd_clip_f ^ flags
 
-print('Number of data point flagged from RMD-clipping: {:,}'.format(rmd_clip_f.sum()))
+    # apply min_N condition
+    mad_f_min_n = np.logical_not(flags).sum(axis=0) < min_N
+    mad_f_min_n = np.expand_dims(mad_f_min_n, axis=0)
+    mad_f_min_n = np.repeat(mad_f_min_n, flags.shape[0], axis=0)
+    rmd_clip_f[mad_f_min_n] = False
+
+    print('Number of data point flagged from RMD-clipping: {:,}'.format(rmd_clip_f.sum()))
 
 
