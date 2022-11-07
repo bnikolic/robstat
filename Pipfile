@@ -8,6 +8,12 @@ scipy = "*"
 jupyter = "*"
 jax = {extras = ["cpu"], version = "*"}
 ipython = "*"
+jupytext = "*"
+matplotlib = "*"
+seaborn = "*"
+scikit-learn = "*"
+astropy = "*"
+multiprocess = "*"
 
 [dev-packages]
 
