@@ -111,6 +111,7 @@ def mp_iter(s):
         
         isfinite = np.isfinite(d).nonzero()[0]
         d = decomposeCArray(flt_nan(d))
+        # print(d.shape)
         robust_cov = MinCovDet(random_state=0).fit(d)
         outliers = robust_cov.mahalanobis(d) > chi2_q
 
@@ -127,12 +128,16 @@ def runmult(cpus = multiprocessing.cpu_count()):
     dtype = rmd_clip_f.dtype
     shape = rmd_clip_f.shape
 
-    m_pool = multiprocessing.Pool(cpus,
+    if cpus:
+        m_pool = multiprocessing.Pool(cpus,
                                   initializer=mp_init, \
                                   initargs=(d_shared, dtype, shape))
-    _ = m_pool.map(mp_iter, np.ndindex(data.shape[1:]))
-    m_pool.close()
-    m_pool.join()
+        _ = m_pool.map(mp_iter, np.ndindex(data.shape[1:]))
+        m_pool.close()
+        m_pool.join()
+    else:
+        mp_init(d_shared, dtype, shape)
+        list(map(mp_iter, np.ndindex(data.shape[1:])))
 
     rmd_clip_f = rmd_clip_f ^ flags
 
