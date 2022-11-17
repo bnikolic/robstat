@@ -1,7 +1,7 @@
 .ipynb_checkpoints
 __pycache__/
 *.egg-info
-*test*
+*test
 notebooks/local_nb.ipynb
 robstat/data/xd_vis*.npz
 robstat/data/idr2_xdg
