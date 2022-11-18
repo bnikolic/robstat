@@ -24,7 +24,7 @@ import os
 
 import numpy as np
 from scipy import special, stats
-from sklearn.covariance import MinCovDet
+from sklearn.covariance import MinCovDet, fast_mcd, empirical_covariance, _robust_covariance
 
 from robstat.stdstat import mad_clip
 from robstat.utils import DATAPATH, decomposeCArray, flt_nan
@@ -37,7 +37,7 @@ data = vis_data['data']
 flags = np.isnan(data)
 redg = vis_data['redg']
 pol = vis_data['pol']
-lsts = vis_data['lsts']
+lsts = vis_data['lsts'] # * 12 / np.pi *3600 to convert to seconds!
 JDs = vis_data['JDs']
 chans = vis_data['chans']
 freqs = vis_data['freqs']
@@ -108,7 +108,7 @@ def mp_init(shared_arr_, sharred_arr_shape_, sharred_arr_dtype_):
 def mp_iter(s):
     d = data[:, s[0], s[1], s[2]]
     if not np.isnan(d).all():
-        
+        print (d.shape)
         isfinite = np.isfinite(d).nonzero()[0]
         d = decomposeCArray(flt_nan(d))
         # print(d.shape)
@@ -150,3 +150,100 @@ def runmult(cpus = multiprocessing.cpu_count()):
     print('Number of data point flagged from RMD-clipping: {:,}'.format(rmd_clip_f.sum()))
 
 
+
+def blkSerial(data):
+    "Go through the data in sequence, no speed up"
+    res=np.zeros_like(data)
+    for ii in np.ndindex(data.shape[1:]):
+        d = data[:, ii[0], ii[1], ii[2]]
+        if np.isnan(d).all():
+            continue 
+        f = np.isfinite(d)
+        d = decomposeCArray(d[f])
+        # rc = MinCovDet(random_state=0).fit(d)
+        rc = blkMCD(d)
+        res[f, ii[0], ii[1], ii[2]] = robust_cov.mahalanobis(d)
+    return res
+
+def blkMCD(d):
+    "Begin refactoring the code. Here the fast_mcd is pulled out"
+    r = MinCovDet(random_state=0)
+    raw_location, raw_covariance, raw_support, raw_dist = fast_mcd(
+            d,
+            support_fraction=r.support_fraction,
+            cov_computation_method=r._nonrobust_covariance,
+            random_state=0,
+        )
+    r.raw_location_ = raw_location
+    r.raw_covariance_ = raw_covariance
+    r.raw_support_ = raw_support
+    r.location_ = raw_location
+    r.support_ = raw_support
+    r.dist_ = raw_dist
+    r.correct_covariance(d)
+    r.reweight_covariance(d)
+    return r
+    
+    
+def blkMCD(d):
+    "Begin refactoring the code. Here the fast_mcd is pulled out"
+    r = MinCovDet(random_state=0)
+    raw_location, raw_covariance, raw_support, raw_dist = simple_fast_mcd(
+            d,
+            support_fraction=r.support_fraction,
+            cov_computation_method=r._nonrobust_covariance,
+            random_state=0,
+        )
+    r.raw_location_ = raw_location
+    r.raw_covariance_ = raw_covariance
+    r.raw_support_ = raw_support
+    r.location_ = raw_location
+    r.support_ = raw_support
+    r.dist_ = raw_dist
+    r.correct_covariance(d)
+    r.reweight_covariance(d)
+    return r
+    
+def simple_fast_mcd(X,
+                    support_fraction=None,
+                    cov_computation_method=empirical_covariance,
+                    random_state=None,
+                    ):
+    n_samples, n_features = X.shape
+
+    # minimum breakdown value
+    if support_fraction is None:
+        n_support = int(np.ceil(0.5 * (n_samples + n_features + 1)))
+    else:
+        n_support = int(support_fraction * n_samples)
+
+    # 1. Find the 10 best couples (location, covariance)
+    # considering two iterations
+    n_trials = 30
+    n_best = 10
+    locations_best, covariances_best, _, _ = _robust_covariance.select_candidates(
+        X,
+        n_support,
+        n_trials=n_trials,
+        select=n_best,
+        n_iter=2,
+        cov_computation_method=cov_computation_method,
+        random_state=random_state,
+    )
+    # 2. Select the best couple on the full dataset amongst the 10
+    locations_full, covariances_full, supports_full, d = _robust_covariance.select_candidates(
+        X,
+        n_support,
+        n_trials=(locations_best, covariances_best),
+        select=1,
+        cov_computation_method=cov_computation_method,
+        random_state=random_state,
+    )
+    location = locations_full[0]
+    covariance = covariances_full[0]
+    support = supports_full[0]
+    dist = d[0]
+
+    return location, covariance, support, dist
+
+    
