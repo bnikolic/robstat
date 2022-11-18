@@ -152,7 +152,7 @@ def runmult(cpus = multiprocessing.cpu_count()):
 
 
 def blkSerial(data):
-    "Go through the data in sequence, no speed up"
+    "Go through the data in blocks of (frequency,time) "
     res=np.zeros_like(data)
     for ii in np.ndindex(data.shape[3:]):
         d = data[:, : , : , ii[0]]
@@ -167,7 +167,7 @@ def blkSerial(data):
 def blkMCD(d):
     "Begin refactoring the code. Here the fast_mcd is pulled out"
     r = MinCovDet(random_state=0)    
-    ll = simple_fast_mcd(
+    ll = blk_fast_mcd(
             d,
             support_fraction=r.support_fraction,
             cov_computation_method=r._nonrobust_covariance,
@@ -228,6 +228,77 @@ def simple_fast_mcd(X,
             XX,
             n_support,
             n_trials=(locations_best, covariances_best),
+            select=1,
+            cov_computation_method=cov_computation_method,
+            random_state=random_state,
+        )
+        location = locations_full[0]
+        covariance = covariances_full[0]
+        support = supports_full[0]
+        dist = d[0]
+        res.append(  [ii, location, covariance, support, dist] )
+    return res
+
+    
+
+def blk_fast_mcd(X,
+                    support_fraction=None,
+                    cov_computation_method=empirical_covariance,
+                    random_state=None,
+                    ):
+    """Bulk MCD calculation. First find candidates across the whole
+    block (axes #1, #2) the find the best fit for each individually
+    slice. 
+    """
+    # First candidates to start from, shared across the whole block
+    locations_best, covariances_best = [], []
+    for ii in  np.ndindex(X.shape[2:]):
+        XX = X[:, :, ii[0], ii[1]]
+        f = np.isfinite(XX).all(axis=1)
+        XX = XX[f]
+        # First two axes are the main axes, others batch
+        n_samples, n_features = XX.shape[0:2]
+        # minimum breakdown value
+        if support_fraction is None:
+            n_support = int(np.ceil(0.5 * (n_samples + n_features + 1)))
+        else:
+            n_support = int(support_fraction * n_samples)
+
+        
+        # 1. Find the 10 best couples (location, covariance)
+        # considering two iterations
+        n_trials = 1
+        n_best = 1
+        l_best, c_best, _, _ = _robust_covariance.select_candidates(
+            XX,
+            n_support,
+            n_trials=n_trials,
+            select=n_best,
+            n_iter=2,
+            cov_computation_method=cov_computation_method,
+            random_state=random_state,
+        )
+        locations_best.extend(l_best)
+        covariances_best.extend(c_best)
+
+    res = []
+    for ii in  np.ndindex(X.shape[2:]):
+        XX = X[:, :, ii[0], ii[1]]
+        f = np.isfinite(XX).all(axis=1)
+        XX = XX[f]
+        # First two axes are the main axes, others batch
+        n_samples, n_features = XX.shape[0:2]
+        # minimum breakdown value
+        if support_fraction is None:
+            n_support = int(np.ceil(0.5 * (n_samples + n_features + 1)))
+        else:
+            n_support = int(support_fraction * n_samples)        
+        # 2. Select the best couple on the full dataset amongst the 10
+        locations_full, covariances_full, supports_full, d = _robust_covariance.select_candidates(
+            XX,
+            n_support,
+            n_trials=(np.array(locations_best)[0:10], # Truncating to 10 here!
+                      np.array(covariances_best)[0:10]),
             select=1,
             cov_computation_method=cov_computation_method,
             random_state=random_state,
