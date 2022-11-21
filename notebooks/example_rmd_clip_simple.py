@@ -224,7 +224,7 @@ def simple_fast_mcd(X,
             random_state=random_state,
         )
         # 2. Select the best couple on the full dataset amongst the 10
-        locations_full, covariances_full, supports_full, d = _robust_covariance.select_candidates(
+        locations_full, covariances_full, supports_full, d, det = _robust_covariance.select_candidates(
             XX,
             n_support,
             n_trials=(locations_best, covariances_best),
@@ -267,7 +267,7 @@ def blk_fast_mcd(X,
         
         # 1. Find the 10 best couples (location, covariance)
         # considering two iterations
-        n_trials = 1
+        n_trials = 3
         n_best = 1
         l_best, c_best, _, _ = _robust_covariance.select_candidates(
             XX,
@@ -281,6 +281,8 @@ def blk_fast_mcd(X,
         locations_best.extend(l_best)
         covariances_best.extend(c_best)
 
+    locations_best = np.array(locations_best)
+    covariances_best = np.array(covariances_best)
     res = []
     for ii in  np.ndindex(X.shape[2:]):
         XX = X[:, :, ii[0], ii[1]]
@@ -293,21 +295,25 @@ def blk_fast_mcd(X,
             n_support = int(np.ceil(0.5 * (n_samples + n_features + 1)))
         else:
             n_support = int(support_fraction * n_samples)        
-        # 2. Select the best couple on the full dataset amongst the 10
+        # We choose N random starting position + the starter for this
+        # point from amonst the best in this block
+        N = 9
+        states = np.append(np.random.default_rng().permutation(len(locations_best))[:N], ii)
         locations_full, covariances_full, supports_full, d = _robust_covariance.select_candidates(
             XX,
             n_support,
-            n_trials=(np.array(locations_best)[0:10], # Truncating to 10 here!
-                      np.array(covariances_best)[0:10]),
+            n_trials=(locations_best[states],
+                      covariances_best[states]),
             select=1,
             cov_computation_method=cov_computation_method,
             random_state=random_state,
+            n_iter=30
         )
         location = locations_full[0]
         covariance = covariances_full[0]
         support = supports_full[0]
         dist = d[0]
-        res.append(  [ii, location, covariance, support, dist] )
+        res.append(  [ii, location, covariance, support, dist, _robust_covariance.fast_logdet(covariance)] )
     return res
 
     
